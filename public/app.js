@@ -8,6 +8,12 @@ const SEK = (n) =>
     ? n.toLocaleString("sv-SE", { maximumFractionDigits: 0 })
     : "N/A";
 
+const formatAmount = (value, mode = "monthly") => {
+  if (typeof value !== "number") return "N/A";
+  const factor = mode === "yearly" ? 12 : 1;
+  return SEK(value * factor);
+};
+
 const renderStatus = (message, isError = false) => {
   if (!app) return;
   app.textContent = message;
@@ -38,16 +44,18 @@ const addMonths = (date, months) => {
 };
 
 const formatCountdown = (ms) => {
-  if (ms <= 0) return "0d 00:00:00";
+  if (ms <= 0) return "0mo 00d 00:00:00";
   const totalSeconds = Math.floor(ms / 1000);
-  const days = Math.floor(totalSeconds / 86400);
+  const totalDays = Math.floor(totalSeconds / 86400);
+  const months = Math.floor(totalDays / 30);
+  const days = totalDays % 30;
   const hours = Math.floor((totalSeconds % 86400) / 3600);
   const mins = Math.floor((totalSeconds % 3600) / 60);
   const secs = totalSeconds % 60;
-  return `${days}d ${String(hours).padStart(2, "0")}:${String(mins).padStart(
+  return `${months}mo ${String(days).padStart(2, "0")}d ${String(hours).padStart(
     2,
     "0"
-  )}:${String(secs).padStart(2, "0")}`;
+  )}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 };
 
 /* =========================
@@ -221,6 +229,102 @@ const createFooter = () => {
   return footer;
 };
 
+const getNextStage = (stages, currentYm) => {
+  if (!Array.isArray(stages)) return null;
+  const upcoming = stages
+    .filter((s) => s?.from && s.from > currentYm)
+    .sort((a, b) => a.from.localeCompare(b.from));
+  return upcoming[0] || null;
+};
+
+const createAssumptionsNote = () => {
+  const note = document.createElement("div");
+  note.className = "assumptions-note";
+  note.textContent =
+    "Assumptions: Long-term grows at 8% annually (monthly compounding). Savings apply at month start.";
+  return note;
+};
+
+const createStageTimeline = (stages, currentYm) => {
+  const wrapper = document.createElement("section");
+  wrapper.className = "timeline";
+
+  const label = document.createElement("div");
+  label.className = "timeline-label";
+  label.textContent = "Stages";
+  wrapper.appendChild(label);
+
+  const rail = document.createElement("div");
+  rail.className = "timeline-rail";
+
+  const ordered = Array.isArray(stages)
+    ? [...stages].sort((a, b) => (a?.from || "").localeCompare(b?.from || ""))
+    : [];
+
+  const currentIndex = ordered.findIndex(
+    (stage) => stage?.from && stage.from <= currentYm && (!stage.to || currentYm <= stage.to)
+  );
+
+  if (ordered.length === 0) {
+    wrapper.appendChild(rail);
+    return wrapper;
+  }
+
+  let startIndex = 0;
+  if (currentIndex > 0) {
+    startIndex = currentIndex - 1;
+  }
+  let endIndex = Math.min(startIndex + 2, ordered.length - 1);
+  startIndex = Math.max(0, endIndex - 2);
+
+  const visible = ordered.slice(startIndex, endIndex + 1);
+
+  const showLeftHint = startIndex > 0;
+  const showRightHint = endIndex < ordered.length - 1;
+
+  if (showLeftHint) {
+    const hint = document.createElement("div");
+    hint.className = "timeline-hint left";
+    hint.setAttribute("aria-hidden", "true");
+    rail.appendChild(hint);
+  }
+
+  visible.forEach((stage) => {
+    const node = document.createElement("div");
+    node.className = "timeline-node";
+
+    const name = document.createElement("div");
+    name.className = "timeline-name";
+    name.textContent = stage?.name || "Stage";
+
+    const dot = document.createElement("div");
+    dot.className = "timeline-dot";
+    if (stage?.from && stage.from <= currentYm && (!stage.to || currentYm <= stage.to)) {
+      dot.classList.add("is-active");
+    }
+
+    const dates = document.createElement("div");
+    dates.className = "timeline-dates";
+    const from = stage?.from || "YYYY-MM";
+    dates.textContent = `${from}${stage?.to ? `–${stage.to}` : ""}`;
+
+    node.appendChild(name);
+    node.appendChild(dot);
+    node.appendChild(dates);
+    rail.appendChild(node);
+  });
+
+  if (showRightHint) {
+    const hint = document.createElement("div");
+    hint.className = "timeline-hint right";
+    hint.setAttribute("aria-hidden", "true");
+    rail.appendChild(hint);
+  }
+
+  wrapper.appendChild(rail);
+  return wrapper;
+};
+
 const renderValidationErrors = (issues) => {
   if (!app) return;
   app.innerHTML = "";
@@ -389,12 +493,48 @@ const projectGoalDate = (stages, goal) => {
 };
 
 /* =========================
+   Buffer projection (no growth)
+   ========================= */
+const projectBufferDate = (stages, goal) => {
+  const targetBuf = safeNumber(goal?.target_buffer);
+  const seedBuf = safeNumber(goalState.currentBuffer);
+
+  if (typeof targetBuf !== "number" || targetBuf <= 0) return { reached: false };
+  if (typeof seedBuf !== "number") return { reached: false };
+
+  let bufferBalance = seedBuf;
+  if (bufferBalance >= targetBuf) {
+    return { reached: true, date: new Date() };
+  }
+
+  const now = new Date();
+  let cursor = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
+
+  for (let i = 0; i < 600; i++) {
+    const ym = getCurrentYearMonth(cursor);
+    const stage = findStageForYearMonth(stages, ym);
+    const addBuf = safeNumber(stage?.saving_buffer);
+
+    if (typeof addBuf === "number") bufferBalance += addBuf;
+
+    if (bufferBalance >= targetBuf) {
+      return { reached: true, date: cursor };
+    }
+
+    cursor = addMonths(cursor, 1);
+  }
+
+  return { reached: false };
+};
+
+/* =========================
    Hero with TWO bars:
    - LT: thick, yellow gradient (inline style)
    - Buffer: thin, blue
    Meta: LT % main, buffer % secondary
    ========================= */
 let liveCountdownUpdater = null;
+let displayMode = "monthly";
 
 const createGoalHero = (goal, stages) => {
   const hero = document.createElement("section");
@@ -483,31 +623,51 @@ const createGoalHero = (goal, stages) => {
   bars.appendChild(barBuf);
 
   // Countdown line
-  const countdown = document.createElement("div");
-  countdown.className = "hero-countdown";
+  const countdownRow = document.createElement("div");
+  countdownRow.className = "hero-countdowns";
+
+  const bufferCountdown = document.createElement("div");
+  bufferCountdown.className = "hero-countdown buffer";
+
+  const ltCountdown = document.createElement("div");
+  ltCountdown.className = "hero-countdown lt";
 
   const projection = projectGoalDate(stages, goal);
-  if (projection.reached && projection.date) {
-    const goalTime = projection.date.getTime();
+  const bufferProjection = projectBufferDate(stages, goal);
 
-    const updateCountdown = () => {
-      const ms = goalTime - Date.now();
-      countdown.textContent = `Estimated goal date: ${projection.date.toLocaleDateString(
+  const updateCountdowns = () => {
+    if (projection.reached && projection.date) {
+      const ms = projection.date.getTime() - Date.now();
+      ltCountdown.textContent = `LT goal: ${projection.date.toLocaleDateString(
         "sv-SE"
-      )}  •  Countdown: ${formatCountdown(ms)}`;
-    };
+      )} • ${formatCountdown(ms)}`;
+    } else {
+      ltCountdown.textContent = "LT goal: Not enough data";
+    }
 
-    updateCountdown();
-    hero._updateCountdown = updateCountdown;
+    if (bufferProjection.reached && bufferProjection.date) {
+      const ms = bufferProjection.date.getTime() - Date.now();
+      bufferCountdown.textContent = `Buffer: ${bufferProjection.date.toLocaleDateString(
+        "sv-SE"
+      )} • ${formatCountdown(ms)}`;
+    } else {
+      bufferCountdown.textContent = "Buffer: Not enough data";
+    }
+  };
+
+  if (projection.reached && projection.date) {
+    updateCountdowns();
+    hero._updateCountdown = updateCountdowns;
   } else {
-    countdown.textContent =
-      "Goal date can't be estimated (missing target values, or savings are zero).";
-    hero._updateCountdown = null;
+    updateCountdowns();
+    hero._updateCountdown = updateCountdowns;
   }
 
   hero.appendChild(row);
   hero.appendChild(bars);
-  hero.appendChild(countdown);
+  countdownRow.appendChild(bufferCountdown);
+  countdownRow.appendChild(ltCountdown);
+  hero.appendChild(countdownRow);
 
   return hero;
 };
@@ -543,6 +703,30 @@ const renderDashboard = ({ yearMonth, stage, warning, goal, stages }) => {
   }
   header.appendChild(right);
 
+  const toggle = document.createElement("div");
+  toggle.className = "mode-toggle";
+  const monthlyBtn = document.createElement("button");
+  monthlyBtn.type = "button";
+  monthlyBtn.className = `mode-btn ${displayMode === "monthly" ? "is-active" : ""}`.trim();
+  monthlyBtn.textContent = "Monthly";
+  monthlyBtn.addEventListener("click", () => {
+    if (displayMode === "monthly") return;
+    displayMode = "monthly";
+    renderCurrentDashboard();
+  });
+  const yearlyBtn = document.createElement("button");
+  yearlyBtn.type = "button";
+  yearlyBtn.className = `mode-btn ${displayMode === "yearly" ? "is-active" : ""}`.trim();
+  yearlyBtn.textContent = "Yearly";
+  yearlyBtn.addEventListener("click", () => {
+    if (displayMode === "yearly") return;
+    displayMode = "yearly";
+    renderCurrentDashboard();
+  });
+  toggle.appendChild(monthlyBtn);
+  toggle.appendChild(yearlyBtn);
+  header.appendChild(toggle);
+
   // Hero
   const hero = createGoalHero(goal, stages);
   liveCountdownUpdater = hero._updateCountdown || null;
@@ -552,30 +736,63 @@ const renderDashboard = ({ yearMonth, stage, warning, goal, stages }) => {
   grid.className = "card-grid";
 
   // Net income (prominent) with pretax + tax details
-  const incomeDetails = `Pre-tax: ${SEK(vm.incomePreTax)} • Tax: ${SEK(vm.tax)}`;
+  const incomeDetails = `Pre-tax: ${formatAmount(vm.incomePreTax, displayMode)} • Tax: ${formatAmount(
+    vm.tax,
+    displayMode
+  )}`;
   grid.appendChild(
     createCard({
       title: "Net income",
-      value: SEK(vm.netIncome),
+      value: formatAmount(vm.netIncome, displayMode),
       details: incomeDetails,
     })
   );
+
+  const availableBeforeSavings =
+    typeof vm.netIncome === "number" && typeof vm.totalOut === "number"
+      ? vm.netIncome - vm.totalOut
+      : null;
 
   // Money out
   grid.appendChild(
     createCard({
       title: "Money out",
-      value: SEK(vm.totalOut),
-      details: `Fixed: ${SEK(vm.fixedCosts)} • Household: ${SEK(vm.household)}`,
+      value: formatAmount(vm.totalOut, displayMode),
+      details: `Fixed: ${formatAmount(vm.fixedCosts, displayMode)} • Household: ${formatAmount(
+        vm.household,
+        displayMode
+      )} • Available before savings: ${formatAmount(availableBeforeSavings, displayMode)}`,
     })
   );
 
   // Savings
+  const savingsTotal = vm.savingsTotal;
+  const savingsLong = vm.savingsLong;
+  const savingsBuffer = vm.savingsBuffer;
+  const savingsBar =
+    typeof savingsTotal === "number" && savingsTotal > 0
+      ? `<div class="stacked-bar">
+           <span class="stacked-seg long" style="width:${clamp(
+             ((typeof savingsLong === "number" ? savingsLong : 0) / savingsTotal) * 100,
+             0,
+             100
+           )}%"></span>
+           <span class="stacked-seg buffer" style="width:${clamp(
+             ((typeof savingsBuffer === "number" ? savingsBuffer : 0) / savingsTotal) * 100,
+             0,
+             100
+           )}%"></span>
+         </div>`
+      : "";
   grid.appendChild(
     createCard({
       title: "Savings",
-      value: SEK(vm.savingsTotal),
-      details: `Long-term: ${SEK(vm.savingsLong)} • Buffer: ${SEK(vm.savingsBuffer)}`,
+      value: formatAmount(savingsTotal, displayMode),
+      details: `Long-term: ${formatAmount(savingsLong, displayMode)} • Buffer: ${formatAmount(
+        savingsBuffer,
+        displayMode
+      )}`,
+      extra: savingsBar,
     })
   );
 
@@ -596,15 +813,17 @@ const renderDashboard = ({ yearMonth, stage, warning, goal, stages }) => {
   grid.appendChild(
     createCard({
       title: "Left in pocket",
-      value: SEK(leftover),
+      value: formatAmount(leftover, displayMode),
       details: "After out + savings",
       variant,
     })
   );
 
   app.appendChild(header);
+  app.appendChild(createStageTimeline(stages, yearMonth));
   app.appendChild(hero);
   app.appendChild(grid);
+  app.appendChild(createAssumptionsNote());
   app.appendChild(createFooter());
 };
 
@@ -621,6 +840,20 @@ const tryFetchPlan = async () => {
 };
 
 let cachedPlan = null;
+
+const renderCurrentDashboard = () => {
+  if (!cachedPlan) return;
+  const stages = Array.isArray(cachedPlan.stages) ? cachedPlan.stages : [];
+  const yearMonth = getCurrentYearMonth(new Date());
+  const stage = findStageForYearMonth(stages, yearMonth);
+  renderDashboard({
+    yearMonth,
+    stage,
+    warning: stateWarning,
+    goal: cachedPlan.goal || {},
+    stages,
+  });
+};
 
 const loadPlan = async () => {
   try {
@@ -661,13 +894,7 @@ const loadPlan = async () => {
     const yearMonth = getCurrentYearMonth(new Date());
     const stage = findStageForYearMonth(stages, yearMonth);
 
-    renderDashboard({
-      yearMonth,
-      stage,
-      warning: stateWarning,
-      goal: plan.goal || {},
-      stages,
-    });
+    renderCurrentDashboard();
 
     // Live ticking: countdown each second
     setInterval(() => {
@@ -682,16 +909,7 @@ const loadPlan = async () => {
       if (!changed) return;
 
       saveState().finally(() => {
-        const ym = getCurrentYearMonth(new Date());
-        const st = findStageForYearMonth(stages2, ym);
-
-        renderDashboard({
-          yearMonth: ym,
-          stage: st,
-          warning: stateWarning,
-          goal: cachedPlan.goal || {},
-          stages: stages2,
-        });
+        renderCurrentDashboard();
       });
     }, 60_000);
   } catch (err) {
