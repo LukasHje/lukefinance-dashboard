@@ -582,33 +582,16 @@ const renderDashboard = ({ yearMonth, stage, warning, goal, stages }) => {
   // Left in pocket (+/=/- based on 3000 threshold)
   const leftover = vm.leftover;
   let variant = "";
-  let sign = "";
-  let pillClass = "";
-  let pillText = "";
 
   if (typeof leftover === "number") {
     if (leftover >= 3000) {
       variant = "variant-good";
-      sign = "+";
-      pillClass = "good";
-      pillText = "On track (>= 3 000)";
     } else if (leftover >= 0) {
       variant = "variant-warn";
-      sign = "≈";
-      pillClass = "warn";
-      pillText = "Tight month (< 3 000)";
     } else {
       variant = "variant-bad";
-      sign = "−";
-      pillClass = "bad";
-      pillText = "Overspent";
     }
   }
-
-  const pill =
-    typeof leftover === "number"
-      ? `<div class="pill ${pillClass}">${sign} ${pillText}</div>`
-      : "";
 
   grid.appendChild(
     createCard({
@@ -616,7 +599,6 @@ const renderDashboard = ({ yearMonth, stage, warning, goal, stages }) => {
       value: SEK(leftover),
       details: "After out + savings",
       variant,
-      extra: pill,
     })
   );
 
