@@ -594,7 +594,7 @@ const createGoalHero = (goal, stages) => {
 
   const labelLT = document.createElement("div");
   labelLT.className = "hero-label";
-  labelLT.textContent = `Long-term: ${SEK(lt)} / ${SEK(targetLT)}  •  ${pctLT.toFixed(1)}%`;
+  labelLT.textContent = `${pctLT.toFixed(0)}%`;
 
   barLT.appendChild(fillLT);
   barLT.appendChild(labelLT);
@@ -614,13 +614,20 @@ const createGoalHero = (goal, stages) => {
   const labelBuf = document.createElement("div");
   labelBuf.className = "hero-label";
   labelBuf.style.fontSize = "11px";
-  labelBuf.textContent = `Buffer: ${SEK(buf)} / ${SEK(targetBuf)}  •  ${pctBuf.toFixed(1)}%`;
+  labelBuf.textContent = `${pctBuf.toFixed(0)}%`;
 
   barBuf.appendChild(fillBuf);
   barBuf.appendChild(labelBuf);
 
   bars.appendChild(barLT);
   bars.appendChild(barBuf);
+
+  const barDetails = document.createElement("div");
+  barDetails.className = "hero-bar-details";
+  barDetails.innerHTML = `
+    <div>Long-term: ${SEK(lt)} / ${SEK(targetLT)}</div>
+    <div>Buffer: ${SEK(buf)} / ${SEK(targetBuf)}</div>
+  `;
 
   // Countdown line
   const countdownRow = document.createElement("div");
@@ -665,8 +672,9 @@ const createGoalHero = (goal, stages) => {
 
   hero.appendChild(row);
   hero.appendChild(bars);
-  countdownRow.appendChild(bufferCountdown);
+  hero.appendChild(barDetails);
   countdownRow.appendChild(ltCountdown);
+  countdownRow.appendChild(bufferCountdown);
   hero.appendChild(countdownRow);
 
   return hero;
