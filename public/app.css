@@ -1,0 +1,238 @@
+:root{
+  /* Lofi + high readability */
+  --bg0:#070a14;
+  --bg1:#0b1226;
+  --panel:#0f1b3a;
+  --panel2:#0c1732;
+  --border:rgba(255,255,255,.10);
+
+  --text:#eef2ff;
+  --muted:rgba(238,242,255,.72);
+
+  --accent:#7dd3fc; /* soft cyan */
+  --accent2:#a78bfa; /* soft violet */
+  --good:#22c55e;
+  --warn:#fbbf24;
+  --bad:#fb7185;
+
+  --shadow: 0 18px 45px rgba(0,0,0,.45);
+  --radius: 18px;
+}
+
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{
+  margin:0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  color: var(--text);
+  background:
+    radial-gradient(900px 600px at 12% 12%, rgba(125,211,252,.14), transparent 60%),
+    radial-gradient(900px 600px at 88% 10%, rgba(167,139,250,.10), transparent 55%),
+    radial-gradient(1200px 900px at 50% 100%, rgba(34,197,94,.06), transparent 55%),
+    linear-gradient(180deg, var(--bg0), var(--bg1));
+}
+
+#app{
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 28px 18px 44px;
+}
+
+/* Top header (month + stage) */
+.top{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  margin-bottom: 14px;
+}
+
+.ym-title{
+  font-size: 46px;
+  font-weight: 900;
+  letter-spacing: .8px;
+  line-height: 1.0;
+}
+
+.ym-sub{
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.warning-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(251,191,36,.35);
+  background: rgba(251,191,36,.12);
+  color: rgba(255,245,200,.95);
+  font-size: 12px;
+  max-width: 460px;
+}
+
+/* Shared card styles */
+.card,
+.hero{
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.card{
+  padding: 16px 16px 14px;
+  position: relative;
+  overflow:hidden;
+}
+
+.card::before{
+  content:"";
+  position:absolute;
+  inset:-1px;
+  background:
+    radial-gradient(500px 160px at 18% 10%, rgba(125,211,252,.12), transparent 55%),
+    radial-gradient(450px 160px at 88% 0%, rgba(167,139,250,.10), transparent 55%);
+  pointer-events:none;
+}
+
+.card > *{ position: relative; }
+
+.card-title{
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: .9px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.card-value{
+  margin: 0;
+  font-size: 36px;
+  font-weight: 900;
+  letter-spacing: .2px;
+  line-height: 1.05;
+}
+
+.card-details{
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.card-icon{
+  position:absolute;
+  top: 14px;
+  right: 14px;
+  width: 28px;
+  height: 28px;
+  opacity: .9;
+  filter: drop-shadow(0 6px 12px rgba(0,0,0,.35));
+}
+
+/* Hero goal card (full width) */
+.hero{
+  padding: 16px 16px 18px;
+  margin: 10px 0 16px;
+}
+
+.hero-title-row{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom: 12px;
+}
+
+.hero-title{
+  font-size: 12px;
+  letter-spacing: .9px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hero-meta{
+  color: var(--muted);
+  font-size: 13px;
+  text-align: right;
+}
+
+/* Big rounded progressbar */
+.hero-bar{
+  position:relative;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.12);
+  overflow:hidden;
+}
+
+.hero-fill{
+  height:100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(125,211,252,.92), rgba(167,139,250,.92));
+}
+
+.hero-label{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(255,255,255,.92);
+  text-shadow: 0 2px 10px rgba(0,0,0,.45);
+}
+
+/* Grid for the 4 main cards */
+.card-grid{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 720px){
+  .card-grid{ grid-template-columns: 1fr; }
+  .hero-title-row{ flex-direction: column; align-items:flex-start; }
+  .hero-meta{ text-align:left; }
+}
+
+/* Leftover card variants */
+.variant-good .card-value{ color: rgba(34,197,94,.95); }
+.variant-warn .card-value{ color: rgba(251,191,36,.95); }
+.variant-bad  .card-value{ color: rgba(251,113,133,.95); }
+
+.pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  color: rgba(255,255,255,.86);
+  margin-top: 10px;
+}
+
+.pill.good{ border-color: rgba(34,197,94,.28); background: rgba(34,197,94,.10); }
+.pill.warn{ border-color: rgba(251,191,36,.28); background: rgba(251,191,36,.10); }
+.pill.bad { border-color: rgba(251,113,133,.28); background: rgba(251,113,133,.10); }
+
+.app-footer{
+  margin-top: 16px;
+  color: rgba(238,242,255,.45);
+  font-size: 12px;
+}
+
+.hero-countdown{
+  margin-top: 10px;
+  color: rgba(238,242,255,.72);
+  font-size: 13px;
+}

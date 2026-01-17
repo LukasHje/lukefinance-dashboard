@@ -1,0 +1,44 @@
+{
+  "goal": {
+    "target_longterm": 5000000,
+    "target_buffer": 50000,
+    "target_year": 2042,
+    "current_longterm": 11000,
+    "current_buffer": 1000
+  },
+  "stages": [
+    {
+      "name": "Nu",
+      "from": "2026-01",
+      "to": "2026-03",
+      "income":45500,
+      "net_income": 34994,
+      "fixed_costs": 15000,
+      "household": 10000,
+      "saving_longterm": 3000,
+      "saving_buffer": 1000
+    },
+    {
+      "name": "Efter löneökning 2026",
+      "from": "2026-04",
+      "to": "2028-01",
+      "income":53000,
+      "net_income": 39000,
+      "fixed_costs": 15000,
+      "household": 10000,
+      "saving_longterm": 5000,
+      "saving_buffer": 1000
+    },
+    {
+      "name": "När partner jobbar",
+      "from": "2028-02",
+      "to": "2035-12",
+      "income":62000,
+      "net_income": 42000,
+      "fixed_costs": 15000,
+      "household": 10000,
+      "saving_longterm": 10000,
+      "saving_buffer": 500
+    }
+  ]
+}
