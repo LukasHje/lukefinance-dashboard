@@ -1,5 +1,9 @@
 # Luke Finance Dashboard
 
+## Preview
+
+![Dashboard preview](public/preview.png)
+
 ## Run locally
 
 ```bash
