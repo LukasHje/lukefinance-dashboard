@@ -3,8 +3,8 @@
     "target_longterm": 5000000,
     "target_buffer": 50000,
     "target_year": 2042,
-    "current_longterm": 11000,
-    "current_buffer": 1000
+    "current_longterm": 14000,
+    "current_buffer": 3000
   },
   "stages": [
     {
@@ -76,9 +76,20 @@
     {
       "name": "Post-raise 2026",
       "from": "2026-04",
-      "to": "2028-01",
+      "to": "2027-01",
+      "income":48000,
+      "net_income": 36628,
+      "fixed_costs": 15000,
+      "household": 10000,
+      "saving_longterm": 5000,
+      "saving_buffer": 1000
+    },
+    {
+      "name": "Post-raise 2027",
+      "from": "2027-02",
+      "to": "2028-10",
       "income":53000,
-      "net_income": 40762,
+      "net_income": 39928,
       "fixed_costs": 15000,
       "household": 10000,
       "saving_longterm": 5000,
