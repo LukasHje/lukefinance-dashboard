@@ -65,10 +65,16 @@ Each stage includes:
 
 ```bash
 npm install
+npm test
 npm run start
 ```
 
 Then open http://127.0.0.1:4173/ in your browser.
+
+## Updating current balances
+
+Use the "Current balances" form in the goal card to update `goal.current_longterm` and `goal.current_buffer` directly in `public/plan.json` while the app is running. The app also refreshes its persisted rollover snapshot immediately, so you do not need to restart the server after a manual deposit or withdrawal.
+This save action only works when the dashboard is served through the Express app from `npm run start`; a static host cannot write back to files.
 
 ## Troubleshooting
 
