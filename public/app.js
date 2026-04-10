@@ -20,122 +20,69 @@ const renderStatus = (message, isError = false) => {
   app.style.color = isError ? "#fb7185" : "#eef2ff";
 };
 
-const safeNumber = (v) => (typeof v === "number" ? v : null);
+const core = globalThis.DashboardCore;
+if (!core) {
+  renderStatus("Error loading shared dashboard logic.", true);
+  throw new Error("DashboardCore failed to load.");
+}
+
+const {
+  addMonths,
+  findStageForYearMonth,
+  getCurrentYearMonth,
+  getPreviousYearMonth,
+  isValidYearMonth,
+  projectBufferDate,
+  projectGoalDate,
+  reconcileGoalState,
+  rollGoalStateForward,
+  safeNumber,
+  validatePlan,
+} = core;
+
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
-/* =========================
-   Date helpers
-   ========================= */
-const getCurrentYearMonth = (d = new Date()) => {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  return `${year}-${month}`;
-};
-
-const parseYearMonth = (ym) => {
-  const [y, m] = ym.split("-").map(Number);
-  return new Date(y, m - 1, 1, 0, 0, 0, 0);
-};
-
-const addMonths = (date, months) => {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
-  return d;
-};
+const formatClockTime = (date) =>
+  new Intl.DateTimeFormat("sv-SE", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
 
 const formatCountdown = (ms) => {
-  if (ms <= 0) return "0mo 00d 00:00:00";
+  if (ms <= 0) return "0mo 00d 00:00";
   const totalSeconds = Math.floor(ms / 1000);
   const totalDays = Math.floor(totalSeconds / 86400);
   const months = Math.floor(totalDays / 30);
   const days = totalDays % 30;
   const hours = Math.floor((totalSeconds % 86400) / 3600);
   const mins = Math.floor((totalSeconds % 3600) / 60);
-  const secs = totalSeconds % 60;
   return `${months}mo ${String(days).padStart(2, "0")}d ${String(hours).padStart(
     2,
     "0"
-  )}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  )}:${String(mins).padStart(2, "0")}`;
 };
 
-/* =========================
-   Plan validation
-   ========================= */
-const isValidYearMonth = (value) => {
-  if (typeof value !== "string") return false;
-  const m = value.match(/^(\d{4})-(\d{2})$/);
-  if (!m) return false;
-  const month = Number(m[2]);
-  return month >= 1 && month <= 12;
-};
+const formatSavingsAppliedStatus = (lastAppliedYm) =>
+  `Savings added when month closes. Last completed month applied: ${lastAppliedYm || "N/A"}`;
 
-const validatePlan = (plan) => {
-  const issues = [];
-
-  if (!plan || !Array.isArray(plan.stages) || plan.stages.length === 0) {
-    issues.push("Plan must include a non-empty stages array.");
-    return issues;
-  }
-
-  plan.stages.forEach((stage, i) => {
-    if (!stage || typeof stage.name !== "string" || stage.name.trim() === "") {
-      issues.push(`Stage ${i + 1} is missing a name.`);
-    }
-    if (!isValidYearMonth(stage?.from)) {
-      issues.push(`Stage ${i + 1} must include a valid from (YYYY-MM).`);
-    }
-    if (stage?.to && !isValidYearMonth(stage.to)) {
-      issues.push(`Stage ${i + 1} has an invalid to (YYYY-MM).`);
-    }
-  });
-
-  if (plan.goal) {
-    const g = plan.goal;
-    const required = [
-      "target_longterm",
-      "target_buffer",
-      "current_longterm",
-      "current_buffer",
-      "target_year",
-    ];
-    required.forEach((k) => {
-      if (!Object.prototype.hasOwnProperty.call(g, k)) {
-        issues.push(`Goal must include ${k}.`);
-      }
-    });
-  }
-
-  return issues;
-};
-
-/* =========================
-   Stage selection (handles gaps)
-   ========================= */
-const findStageForYearMonth = (stages, ym) => {
+const getLatestStageEndInfo = (stages) => {
   if (!Array.isArray(stages) || stages.length === 0) return null;
 
-  // 1) Exact match: from <= ym <= to/open
-  const candidates = stages.filter((s) => {
-    if (!s?.from) return false;
-    const startsOk = s.from <= ym;
-    const endsOk = s.to ? ym <= s.to : true;
-    return startsOk && endsOk;
-  });
+  const latestTo = stages
+    .map((stage) => stage?.to)
+    .filter((value) => isValidYearMonth(value))
+    .sort((a, b) => b.localeCompare(a))[0];
 
-  if (candidates.length) {
-    candidates.sort((a, b) => b.from.localeCompare(a.from));
-    return candidates[0];
-  }
+  if (!latestTo) return null;
 
-  // 2) Gap fallback: most recent stage that started before ym
-  const prior = stages
-    .filter((s) => s?.from && s.from <= ym)
-    .sort((a, b) => b.from.localeCompare(a.from));
-  if (prior.length) return prior[0];
+  const [year, month] = latestTo.split("-").map(Number);
+  const endDate = new Date(year, month, 0, 23, 59, 59, 999);
 
-  // 3) ym is before all stages: pick earliest
-  const earliest = [...stages].sort((a, b) => a.from.localeCompare(b.from));
-  return earliest[0] || null;
+  return {
+    yearMonth: latestTo,
+    endDate,
+  };
 };
 
 /* =========================
@@ -222,10 +169,22 @@ const createCard = ({ title, value, details = "", variant = "", extra = "" }) =>
   return card;
 };
 
-const createFooter = () => {
+const createFooter = ({ lastAppliedYm = null } = {}) => {
   const footer = document.createElement("footer");
   footer.className = "app-footer";
-  footer.textContent = `Last loaded: ${new Date().toLocaleString("sv-SE")}`;
+
+  const loaded = document.createElement("span");
+  loaded.className = "app-footer-chip";
+  loaded.textContent = `Last loaded ${formatClockTime(new Date())}`;
+  footer.appendChild(loaded);
+
+  if (lastAppliedYm) {
+    const applied = document.createElement("span");
+    applied.className = "app-footer-chip";
+    applied.textContent = formatSavingsAppliedStatus(lastAppliedYm);
+    footer.appendChild(applied);
+  }
+
   return footer;
 };
 
@@ -240,8 +199,7 @@ const getNextStage = (stages, currentYm) => {
 const createAssumptionsNote = () => {
   const note = document.createElement("div");
   note.className = "assumptions-note";
-  note.textContent =
-    "Assumptions: Long-term grows at 8% annually (monthly compounding). Savings apply at month start.";
+  note.textContent = "Assumptions: Long-term grows at 8% annually (monthly compounding).";
   return note;
 };
 
@@ -346,10 +304,18 @@ const renderValidationErrors = (issues) => {
 const goalState = {
   currentLongterm: 0,
   currentBuffer: 0,
-  lastRolloverYm: null,
+  lastMonthlySavingsAddedYm: null,
+  planSeedLongterm: 0,
+  planSeedBuffer: 0,
 };
 
 let stateWarning = "";
+let currentGoalSaveStatus = "";
+let isSavingCurrentGoal = false;
+let backendCapabilities = {
+  checked: false,
+  saveCurrentValuesToPlan: false,
+};
 
 const loadState = async () => {
   try {
@@ -367,7 +333,9 @@ const saveState = async () => {
   const payload = {
     current_longterm: goalState.currentLongterm,
     current_buffer: goalState.currentBuffer,
-    last_rollover_ym: goalState.lastRolloverYm,
+    last_monthly_savings_added_ym: goalState.lastMonthlySavingsAddedYm,
+    plan_seed_longterm: goalState.planSeedLongterm,
+    plan_seed_buffer: goalState.planSeedBuffer,
   };
 
   try {
@@ -389,142 +357,45 @@ const saveState = async () => {
   }
 };
 
-const initGoalState = (plan) => {
-  const seedLong = safeNumber(plan?.goal?.current_longterm);
-  const seedBuf = safeNumber(plan?.goal?.current_buffer);
-
-  goalState.currentLongterm = typeof seedLong === "number" ? seedLong : 0;
-  goalState.currentBuffer = typeof seedBuf === "number" ? seedBuf : 0;
-
-  // Avoid adding savings immediately on first run
-  goalState.lastRolloverYm = getCurrentYearMonth(new Date());
+const loadBackendCapabilities = async () => {
+  try {
+    const response = await fetch("/api/meta", { cache: "no-store" });
+    if (!response.ok) throw new Error("meta failed");
+    const data = await response.json();
+    backendCapabilities = {
+      checked: true,
+      saveCurrentValuesToPlan: Boolean(data?.capabilities?.save_current_values_to_plan),
+    };
+  } catch {
+    backendCapabilities = {
+      checked: true,
+      saveCurrentValuesToPlan: false,
+    };
+  }
 };
+
+const applyGoalState = (nextState) => {
+  goalState.currentLongterm = nextState.currentLongterm;
+  goalState.currentBuffer = nextState.currentBuffer;
+  goalState.lastMonthlySavingsAddedYm = nextState.lastMonthlySavingsAddedYm;
+  goalState.planSeedLongterm = nextState.planSeedLongterm;
+  goalState.planSeedBuffer = nextState.planSeedBuffer;
+};
+
+const snapshotGoalState = () => ({
+  currentLongterm: goalState.currentLongterm,
+  currentBuffer: goalState.currentBuffer,
+  lastMonthlySavingsAddedYm: goalState.lastMonthlySavingsAddedYm,
+  planSeedLongterm: goalState.planSeedLongterm,
+  planSeedBuffer: goalState.planSeedBuffer,
+});
 
 const applyMonthlyRolloverIfNeeded = (stages) => {
-  const now = new Date();
-  const currentYm = getCurrentYearMonth(now);
-
-  if (!goalState.lastRolloverYm) {
-    goalState.lastRolloverYm = currentYm;
-    return false;
-  }
-
-  if (currentYm <= goalState.lastRolloverYm) return false;
-
-  let changed = false;
-
-  let cursor = parseYearMonth(goalState.lastRolloverYm);
-  cursor = addMonths(cursor, 1);
-
-  while (getCurrentYearMonth(cursor) <= currentYm) {
-    const ym = getCurrentYearMonth(cursor);
-    const stage = findStageForYearMonth(stages, ym);
-
-    const addLong = safeNumber(stage?.saving_longterm);
-    const addBuf = safeNumber(stage?.saving_buffer);
-
-    if (typeof addLong === "number") {
-      goalState.currentLongterm += addLong;
-      changed = true;
-    }
-    if (typeof addBuf === "number") {
-      goalState.currentBuffer += addBuf;
-      changed = true;
-    }
-
-    goalState.lastRolloverYm = ym;
-    cursor = addMonths(cursor, 1);
-  }
-
-  return changed;
-};
-
-/* =========================
-   Goal projection (8% annual growth on longterm ONLY)
-   Target reached when BOTH:
-   - longterm >= target_longterm
-   - buffer >= target_buffer
-   Deposits happen at month start (YYYY-MM-01 00:00)
-   ========================= */
-const projectGoalDate = (stages, goal) => {
-  const targetLT = safeNumber(goal?.target_longterm);
-  const targetBuf = safeNumber(goal?.target_buffer);
-
-  const seedLong = safeNumber(goalState.currentLongterm);
-  const seedBuf = safeNumber(goalState.currentBuffer);
-
-  if (typeof targetLT !== "number" || targetLT <= 0) return { reached: false };
-  if (typeof targetBuf !== "number" || targetBuf < 0) return { reached: false };
-  if (typeof seedLong !== "number" || typeof seedBuf !== "number") return { reached: false };
-
-  let longTermBalance = seedLong;
-  let bufferBalance = seedBuf;
-
-  if (longTermBalance >= targetLT && bufferBalance >= targetBuf) {
-    return { reached: true, date: new Date() };
-  }
-
-  const annualRate = 0.08;
-  const monthlyRate = Math.pow(1 + annualRate, 1 / 12) - 1;
-
-  const now = new Date();
-  let cursor = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
-
-  for (let i = 0; i < 600; i++) {
-    const ym = getCurrentYearMonth(cursor);
-    const stage = findStageForYearMonth(stages, ym);
-
-    const addLong = safeNumber(stage?.saving_longterm);
-    const addBuf = safeNumber(stage?.saving_buffer);
-
-    if (typeof addLong === "number") longTermBalance += addLong;
-    if (typeof addBuf === "number") bufferBalance += addBuf;
-
-    longTermBalance *= 1 + monthlyRate;
-
-    if (longTermBalance >= targetLT && bufferBalance >= targetBuf) {
-      return { reached: true, date: cursor };
-    }
-
-    cursor = addMonths(cursor, 1);
-  }
-
-  return { reached: false };
-};
-
-/* =========================
-   Buffer projection (no growth)
-   ========================= */
-const projectBufferDate = (stages, goal) => {
-  const targetBuf = safeNumber(goal?.target_buffer);
-  const seedBuf = safeNumber(goalState.currentBuffer);
-
-  if (typeof targetBuf !== "number" || targetBuf <= 0) return { reached: false };
-  if (typeof seedBuf !== "number") return { reached: false };
-
-  let bufferBalance = seedBuf;
-  if (bufferBalance >= targetBuf) {
-    return { reached: true, date: new Date() };
-  }
-
-  const now = new Date();
-  let cursor = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
-
-  for (let i = 0; i < 600; i++) {
-    const ym = getCurrentYearMonth(cursor);
-    const stage = findStageForYearMonth(stages, ym);
-    const addBuf = safeNumber(stage?.saving_buffer);
-
-    if (typeof addBuf === "number") bufferBalance += addBuf;
-
-    if (bufferBalance >= targetBuf) {
-      return { reached: true, date: cursor };
-    }
-
-    cursor = addMonths(cursor, 1);
-  }
-
-  return { reached: false };
+  // Persisted state tracks the latest fully completed month already folded into the
+  // current balances. On each rollover we only add months that finished since then.
+  const result = rollGoalStateForward(snapshotGoalState(), stages, new Date());
+  applyGoalState(result.state);
+  return result.changed;
 };
 
 /* =========================
@@ -535,6 +406,278 @@ const projectBufferDate = (stages, goal) => {
    ========================= */
 let liveCountdownUpdater = null;
 let displayMode = "monthly";
+let activeGoalPanel = null;
+
+const sensitivityScenarios = [
+  { label: "Low", rate: 0.04 },
+  { label: "Base", rate: 0.08 },
+  { label: "High", rate: 0.12 },
+];
+
+const formatProjectionSummary = (projection) => {
+  if (!projection.reached || !projection.date) return "Not enough data";
+  return projection.date.toLocaleDateString("sv-SE");
+};
+
+const saveCurrentGoalValues = async ({ currentLongterm, currentBuffer }) => {
+  if (!cachedPlan) return;
+  if (!backendCapabilities.saveCurrentValuesToPlan) {
+    currentGoalSaveStatus =
+      "This server needs a restart before the current-balances editor can save into plan.json.";
+    renderCurrentDashboard();
+    return;
+  }
+
+  isSavingCurrentGoal = true;
+  currentGoalSaveStatus = "";
+  renderCurrentDashboard();
+
+  try {
+    const response = await fetch("/api/plan/current-values", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        current_longterm: currentLongterm,
+        current_buffer: currentBuffer,
+      }),
+    });
+
+    if (!response.ok) {
+      let detail =
+        response.status === 404
+          ? "The running server does not expose /api/plan/current-values. Restart `npm run start` so the updated backend route is loaded."
+          : "Could not save balances to plan.json";
+      try {
+        const errorData = await response.json();
+        if (errorData?.error) detail = errorData.error;
+      } catch {}
+      throw new Error(detail);
+    }
+
+    const data = await response.json();
+    cachedPlan.goal = {
+      ...(cachedPlan.goal || {}),
+      ...(data.goal || {}),
+    };
+
+    // Manual edits become the new source-of-truth seed. We reseed the rollover
+    // snapshot immediately so the app does not need a restart and future month
+    // closings continue from the right base balances.
+    const resolvedState = reconcileGoalState(cachedPlan.goal, null, new Date());
+    applyGoalState(resolvedState);
+
+    const stateSaved = await saveState();
+    currentGoalSaveStatus = stateSaved
+      ? "Saved current balances to plan.json."
+      : "Saved to plan.json, but the rollover snapshot could not be saved.";
+  } catch (err) {
+    currentGoalSaveStatus = `Save failed: ${err.message}`;
+  } finally {
+    isSavingCurrentGoal = false;
+    renderCurrentDashboard();
+  }
+};
+
+const toggleGoalPanel = (panelName) => {
+  activeGoalPanel = activeGoalPanel === panelName ? null : panelName;
+  renderCurrentDashboard();
+};
+
+const createCurrentBalancesEditor = () => {
+  const form = document.createElement("form");
+  form.className = "goal-adjuster";
+
+  const intro = document.createElement("div");
+  intro.className = "goal-adjuster-copy";
+  intro.innerHTML =
+    '<div class="goal-adjuster-text">Edit the live balances and save them straight back to plan.json without restarting the app.</div>';
+  form.appendChild(intro);
+
+  const fields = document.createElement("div");
+  fields.className = "goal-adjuster-fields";
+
+  const createField = (labelText, name, value) => {
+    const label = document.createElement("label");
+    label.className = "goal-adjuster-field";
+
+    const caption = document.createElement("span");
+    caption.className = "goal-adjuster-label";
+    caption.textContent = labelText;
+
+    const input = document.createElement("input");
+    input.className = "goal-adjuster-input";
+    input.type = "number";
+    input.name = name;
+    input.inputMode = "numeric";
+    input.step = "100";
+    input.min = "0";
+    input.value = String(value ?? 0);
+
+    label.appendChild(caption);
+    label.appendChild(input);
+    return label;
+  };
+
+  fields.appendChild(
+    createField("Long-term", "current_longterm", goalState.currentLongterm ?? 0)
+  );
+  fields.appendChild(createField("Buffer", "current_buffer", goalState.currentBuffer ?? 0));
+  form.appendChild(fields);
+
+  const actions = document.createElement("div");
+  actions.className = "goal-adjuster-actions";
+
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.className = "goal-adjuster-save";
+  saveButton.disabled = isSavingCurrentGoal || !backendCapabilities.saveCurrentValuesToPlan;
+  saveButton.textContent = isSavingCurrentGoal ? "Saving..." : "Save balances";
+  actions.appendChild(saveButton);
+
+  const status = document.createElement("div");
+  status.className = "goal-adjuster-status";
+  status.textContent =
+    currentGoalSaveStatus ||
+    (!backendCapabilities.saveCurrentValuesToPlan
+      ? "Backend needs restart before this editor can write to plan.json."
+      : formatSavingsAppliedStatus(goalState.lastMonthlySavingsAddedYm));
+  actions.appendChild(status);
+
+  form.appendChild(actions);
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const nextLongterm = Number(data.get("current_longterm"));
+    const nextBuffer = Number(data.get("current_buffer"));
+
+    saveCurrentGoalValues({
+      currentLongterm: Number.isFinite(nextLongterm) ? nextLongterm : 0,
+      currentBuffer: Number.isFinite(nextBuffer) ? nextBuffer : 0,
+    });
+  });
+
+  return form;
+};
+
+const createSensitivityPanel = (goal, stages) => {
+  const panel = document.createElement("section");
+  panel.className = "sensitivity";
+
+  const now = new Date();
+  const currentYm = getCurrentYearMonth(now);
+  const currentStage = findStageForYearMonth(stages, currentYm);
+  const currentLongtermSaving = safeNumber(currentStage?.saving_longterm);
+  const currentLongtermText =
+    typeof currentLongtermSaving === "number"
+      ? `${SEK(currentLongtermSaving)}/month`
+      : "the current stage's monthly Long-term amount";
+  const baseProjection = projectGoalDate({
+    stages,
+    goal,
+    currentLongterm: goalState.currentLongterm,
+    currentBuffer: goalState.currentBuffer,
+    annualRate: 0.08,
+    now,
+  });
+  const latestStageEnd = getLatestStageEndInfo(stages);
+
+  const subtitle = document.createElement("div");
+  subtitle.className = "sensitivity-subtitle";
+  subtitle.innerHTML = baseProjection.reached && baseProjection.date
+    ? `<strong>Projection based on your current savings plan</strong>
+This estimate assumes you continue saving according to your plan with an annual return of 8%.
+
+<strong>Estimated goal date:</strong> ${baseProjection.date.toLocaleDateString("sv-SE")}
+
+<em>Below, you can see how different return rates affect your timeline.</em>`
+    : `<strong>Projection based on your current savings plan</strong>
+	This estimate uses your current monthly Long-term savings and the selected annual return rate.
+	
+	<em>Below, you can see how different return rates affect your timeline.</em>`;
+  panel.appendChild(subtitle);
+
+  if (
+    latestStageEnd &&
+    baseProjection.reached &&
+    baseProjection.date &&
+    baseProjection.date.getTime() > latestStageEnd.endDate.getTime()
+  ) {
+    const warning = document.createElement("div");
+    warning.className = "sensitivity-warning";
+    warning.textContent = `Projection extends the last plan stage beyond ${latestStageEnd.yearMonth}.`;
+    panel.appendChild(warning);
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "sensitivity-grid";
+
+  sensitivityScenarios.forEach((scenario) => {
+    const projection = projectGoalDate({
+      stages,
+      goal,
+      currentLongterm: goalState.currentLongterm,
+      currentBuffer: goalState.currentBuffer,
+      annualRate: scenario.rate,
+      now: new Date(),
+    });
+
+    const card = document.createElement("div");
+    card.className = "sensitivity-card";
+    card.innerHTML = `
+      <div class="sensitivity-label">${scenario.label}</div>
+      <div class="sensitivity-rate">${(scenario.rate * 100).toFixed(0)}% annual</div>
+      <div class="sensitivity-date">${formatProjectionSummary(projection)}</div>
+    `;
+    grid.appendChild(card);
+  });
+
+  panel.appendChild(grid);
+  return panel;
+};
+
+const createGoalPanelToggle = (goal, stages) => {
+  const wrapper = document.createElement("section");
+  wrapper.className = "hero-tools";
+
+  const toggle = document.createElement("div");
+  toggle.className = "hero-panel-toggle";
+
+  const buttons = [
+    { key: "balances", label: "Current balances" },
+    { key: "sensitivity", label: "Target-date sensitivity" },
+  ];
+
+  buttons.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `hero-panel-btn ${activeGoalPanel === item.key ? "is-active" : ""}`.trim();
+    button.setAttribute("aria-pressed", activeGoalPanel === item.key ? "true" : "false");
+    button.textContent = item.label;
+    button.addEventListener("click", () => {
+      toggleGoalPanel(item.key);
+    });
+    toggle.appendChild(button);
+  });
+
+  wrapper.appendChild(toggle);
+
+  if (!activeGoalPanel) {
+    return wrapper;
+  }
+
+  const panelShell = document.createElement("div");
+  panelShell.className = "hero-panel-shell";
+
+  if (activeGoalPanel === "balances") {
+    panelShell.appendChild(createCurrentBalancesEditor());
+  } else if (activeGoalPanel === "sensitivity") {
+    panelShell.appendChild(createSensitivityPanel(goal, stages));
+  }
+
+  wrapper.appendChild(panelShell);
+  return wrapper;
+};
 
 const createGoalHero = (goal, stages) => {
   const hero = document.createElement("section");
@@ -639,8 +782,20 @@ const createGoalHero = (goal, stages) => {
   const ltCountdown = document.createElement("div");
   ltCountdown.className = "hero-countdown lt";
 
-  const projection = projectGoalDate(stages, goal);
-  const bufferProjection = projectBufferDate(stages, goal);
+  const projection = projectGoalDate({
+    stages,
+    goal,
+    currentLongterm: goalState.currentLongterm,
+    currentBuffer: goalState.currentBuffer,
+    annualRate: 0.08,
+    now: new Date(),
+  });
+  const bufferProjection = projectBufferDate({
+    stages,
+    goal,
+    currentBuffer: goalState.currentBuffer,
+    now: new Date(),
+  });
 
   const updateCountdowns = () => {
     if (projection.reached && projection.date) {
@@ -676,6 +831,8 @@ const createGoalHero = (goal, stages) => {
   countdownRow.appendChild(ltCountdown);
   countdownRow.appendChild(bufferCountdown);
   hero.appendChild(countdownRow);
+  hero.appendChild(createAssumptionsNote());
+  hero.appendChild(createGoalPanelToggle(goal, stages));
 
   return hero;
 };
@@ -831,8 +988,11 @@ const renderDashboard = ({ yearMonth, stage, warning, goal, stages }) => {
   app.appendChild(createStageTimeline(stages, yearMonth));
   app.appendChild(hero);
   app.appendChild(grid);
-  app.appendChild(createAssumptionsNote());
-  app.appendChild(createFooter());
+  app.appendChild(
+    createFooter({
+      lastAppliedYm: goalState.lastMonthlySavingsAddedYm,
+    })
+  );
 };
 
 /* =========================
@@ -865,6 +1025,7 @@ const renderCurrentDashboard = () => {
 
 const loadPlan = async () => {
   try {
+    await loadBackendCapabilities();
     const response = await tryFetchPlan();
     const plan = await response.json();
     cachedPlan = plan;
@@ -878,29 +1039,18 @@ const loadPlan = async () => {
     const stages = Array.isArray(plan.stages) ? plan.stages : [];
 
     const storedState = await loadState();
-    const storedLong = safeNumber(storedState?.current_longterm);
-    const storedBuf = safeNumber(storedState?.current_buffer);
-    const storedYm = storedState?.last_rollover_ym;
+    const resolvedState = reconcileGoalState(plan.goal || {}, storedState, new Date());
+    applyGoalState(resolvedState);
 
-    if (typeof storedLong === "number" && typeof storedBuf === "number") {
-      goalState.currentLongterm = storedLong;
-      goalState.currentBuffer = storedBuf;
-      goalState.lastRolloverYm = isValidYearMonth(storedYm)
-        ? storedYm
-        : getCurrentYearMonth(new Date());
-    } else {
-      initGoalState(plan);
-      await saveState();
-    }
-
-    // Apply rollover if we crossed into new months while tab stayed open
+    let shouldPersist = resolvedState.shouldPersist;
     const rolloverChanged = applyMonthlyRolloverIfNeeded(stages);
     if (rolloverChanged) {
-      await saveState();
+      shouldPersist = true;
     }
 
-    const yearMonth = getCurrentYearMonth(new Date());
-    const stage = findStageForYearMonth(stages, yearMonth);
+    if (shouldPersist) {
+      await saveState();
+    }
 
     renderCurrentDashboard();
 

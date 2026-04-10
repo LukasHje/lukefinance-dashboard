@@ -3,15 +3,15 @@
     "target_longterm": 5000000,
     "target_buffer": 50000,
     "target_year": 2042,
-    "current_longterm": 14000,
-    "current_buffer": 3000
+    "current_longterm": 56000,
+    "current_buffer": 6200
   },
   "stages": [
     {
       "name": "2021",
       "from": "2021-10",
       "to": "2021-12",
-      "income":37000,
+      "income": 37000,
       "net_income": 27544,
       "fixed_costs": 8000,
       "household": 10000,
@@ -22,7 +22,7 @@
       "name": "2022",
       "from": "2022-01",
       "to": "2022-12",
-      "income":38100,
+      "income": 38100,
       "net_income": 34225,
       "fixed_costs": 8000,
       "household": 10000,
@@ -33,7 +33,7 @@
       "name": "2023",
       "from": "2023-01",
       "to": "2023-12",
-      "income":42000,
+      "income": 42000,
       "net_income": 33544,
       "fixed_costs": 10000,
       "household": 10000,
@@ -44,7 +44,7 @@
       "name": "2024",
       "from": "2024-01",
       "to": "2024-12",
-      "income":43500,
+      "income": 43500,
       "net_income": 31244,
       "fixed_costs": 15000,
       "household": 10000,
@@ -52,10 +52,10 @@
       "saving_buffer": 1000
     },
     {
-      "name": "2025",
+      "name": "2025 to august",
       "from": "2025-01",
-      "to": "2025-12",
-      "income":44500,
+      "to": "2025-08",
+      "income": 44500,
       "net_income": 33544,
       "fixed_costs": 15000,
       "household": 10000,
@@ -63,10 +63,10 @@
       "saving_buffer": 1000
     },
     {
-      "name": "Early 2026",
-      "from": "2026-01",
+      "name": "2025 new job",
+      "from": "2025-09",
       "to": "2026-03",
-      "income":45500,
+      "income": 45500,
       "net_income": 34994,
       "fixed_costs": 15000,
       "household": 10000,
@@ -74,10 +74,10 @@
       "saving_buffer": 1000
     },
     {
-      "name": "Post-raise 2026",
+      "name": "2026 renewed contract",
       "from": "2026-04",
       "to": "2027-01",
-      "income":48000,
+      "income": 48000,
       "net_income": 36628,
       "fixed_costs": 15000,
       "household": 10000,
@@ -85,10 +85,10 @@
       "saving_buffer": 1000
     },
     {
-      "name": "Post-raise 2027",
+      "name": "2027 permanent position",
       "from": "2027-02",
       "to": "2028-10",
-      "income":53000,
+      "income": 53000,
       "net_income": 39928,
       "fixed_costs": 15000,
       "household": 10000,
@@ -99,7 +99,7 @@
       "name": "Dual-income",
       "from": "2028-02",
       "to": "2035-12",
-      "income":62000,
+      "income": 62000,
       "net_income": 47684,
       "fixed_costs": 15000,
       "household": 10000,
